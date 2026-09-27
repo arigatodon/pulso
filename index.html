@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulso · Polar H10</title>
+<meta name="description" content="Monitor de frecuencia cardíaca, variabilidad, ECG en vivo y oximetría mediante Web Bluetooth.">
+<style>
+  :root {
+    --bg: #0b0d12; --surface: #12151d; --surface-2: #181c26; --border: #232837;
+    --ink: #eef1f7; --ink-2: #a3abbd; --ink-3: #6b7387;
+    --accent: #ff4d6d; --accent-soft: rgba(255, 77, 109, .18);
+    --ecg: #37e3a0; --hr-line: #ff8fa3; --rr-line: #7aa7ff; --spo2-line: #5fd0ff; --resp-line: #c39bff;
+    --grid: rgba(255,255,255,.06);
+    --z0: #ff4d6d; --z1: #4f7fd6; --z2: #33b58a; --z3: #d9b53c; --z4: #f0863a; --z5: #ff2e2e;
+    --radius: 18px;
+    --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f6fa; --surface: #ffffff; --surface-2: #f0f2f7; --border: #dde1ea;
+    --ink: #10131a; --ink-2: #4b5368; --ink-3: #8a93a8;
+    --grid: rgba(0,0,0,.07); --hr-line: #e0304f; --ecg: #0f9f6a; --rr-line: #2f63d6; --spo2-line: #1a8fc7; --resp-line: #7d4fd6;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -200px, rgba(255,77,109,.10), transparent 70%), var(--bg);
+    color: var(--ink); font-family: var(--sans); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; min-height: 100%;
+  }
+  .app { max-width: 1240px; margin: 0 auto; padding: 20px 16px 40px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 6px 4px 18px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .logo { width: 34px; height: 34px; color: var(--accent); filter: drop-shadow(0 0 12px var(--accent-soft)); }
+  .brand h1 { font-size: 18px; margin: 0; letter-spacing: .2px; font-weight: 650; }
+  .brand small { display: block; color: var(--ink-3); font-size: 12px; font-weight: 500; }
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .status { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--ink-2); font-size: 13px; }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+  .status.on .dot { background: var(--ecg); box-shadow: 0 0 10px var(--ecg); }
+  .status.busy .dot { background: var(--z3); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .battery { display: inline-flex; align-items: center; gap: 6px; }
+  .battery i { display: inline-block; width: 22px; height: 11px; border: 1.5px solid currentColor; border-radius: 3px; position: relative; }
+  .battery i::after { content: ""; position: absolute; right: -4px; top: 2px; width: 2px; height: 5px; background: currentColor; border-radius: 1px; }
+  .battery i b { position: absolute; left: 1px; top: 1px; bottom: 1px; width: var(--lvl, 0%); background: currentColor; border-radius: 1px; }
+
+  button, select, input { font: inherit; color: inherit; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 14px; transition: transform .12s ease, background .2s ease, border-color .2s ease; }
+  .btn:hover { background: var(--surface-2); border-color: var(--ink-3); }
+  .btn:active { transform: scale(.97); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; box-shadow: 0 8px 30px -8px var(--accent); }
+  .btn.primary:hover { background: #ff6580; }
+  .btn.ghost { background: transparent; }
+  .btn.sm { padding: 7px 12px; font-size: 13px; }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .btn svg { width: 16px; height: 16px; }
+
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+  .card { grid-column: span 12; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; min-width: 0; position: relative; }
+  .card h2 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); letter-spacing: .4px; text-transform: uppercase; }
+  .card .sub { color: var(--ink-3); font-size: 12px; margin: 0 0 12px; line-height: 1.4; }
+  .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  @media (min-width: 900px) {
+    .hero { grid-column: span 4; } .hrchart { grid-column: span 8; }
+    .stat { grid-column: span 3; }
+    .half { grid-column: span 6; }
+  }
+  @media (min-width: 600px) and (max-width: 899px) { .stat { grid-column: span 6; } }
+
+  .hero { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 26px 20px; overflow: hidden; }
+  .hero::before { content: ""; position: absolute; inset: -40%; pointer-events: none; background: radial-gradient(closest-side, var(--zone-glow, var(--accent-soft)), transparent 70%); opacity: var(--glow, .55); transition: opacity .3s ease; }
+  .heart { width: 120px; height: 120px; position: relative; z-index: 1; will-change: transform; color: var(--zone-color, var(--accent)); transition: color .6s ease; }
+  .heart svg { width: 100%; height: 100%; filter: drop-shadow(0 10px 30px rgba(0,0,0,.35)) drop-shadow(0 0 18px var(--zone-glow, var(--accent-soft))); }
+  .bpm { position: relative; z-index: 1; margin-top: 4px; line-height: 1; }
+  .bpm .value { font-size: 88px; font-weight: 700; letter-spacing: -3px; font-family: var(--mono); }
+  .bpm .unit { color: var(--ink-3); font-size: 14px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; margin-top: 6px; }
+  .zone { position: relative; z-index: 1; margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .zone .pill { width: 10px; height: 10px; border-radius: 50%; background: var(--zone-color, var(--ink-3)); }
+  .zone-bar { position: relative; z-index: 1; margin-top: 14px; width: 100%; max-width: 260px; height: 6px; border-radius: 999px; overflow: hidden; display: flex; gap: 2px; }
+  .zone-bar span { flex: 1; opacity: .3; transition: opacity .3s; }
+  .zone-bar span.active { opacity: 1; }
+  .zone-bar span:nth-child(1){background:var(--z0)} .zone-bar span:nth-child(2){background:var(--z1)} .zone-bar span:nth-child(3){background:var(--z2)}
+  .zone-bar span:nth-child(4){background:var(--z3)} .zone-bar span:nth-child(5){background:var(--z4)} .zone-bar span:nth-child(6){background:var(--z5)}
+  .contact { position: relative; z-index: 1; margin-top: 12px; font-size: 12px; color: var(--ink-3); min-height: 16px; }
+
+  .chart-wrap { position: relative; width: 100%; }
+  .chart-wrap canvas { display: block; width: 100%; height: 100%; }
+  .hrchart .chart-wrap { height: 260px; }
+  .ecg .chart-wrap { height: 220px; }
+  .rrchart .chart-wrap, .poincare .chart-wrap { height: 200px; }
+  .spo2 .chart-wrap { height: 90px; margin-top: 10px; }
+  .tooltip { position: absolute; pointer-events: none; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12px; color: var(--ink); white-space: nowrap; transform: translate(-50%, calc(-100% - 10px)); opacity: 0; transition: opacity .1s; box-shadow: 0 8px 24px -10px rgba(0,0,0,.5); z-index: 2; }
+  .tooltip b { font-family: var(--mono); font-weight: 600; }
+  .tooltip.show { opacity: 1; }
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--ink-3); cursor: pointer; }
+  .seg button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--ecg); display: inline-flex; align-items: center; gap: 6px; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: blink 1.2s infinite; }
+  .badge.off { color: var(--ink-3); } .badge.off::before { animation: none; }
+  .badge.warn { color: var(--z3); }
+  .diag { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 8px; min-height: 14px; }
+
+  .stat .big { font-family: var(--mono); font-size: 34px; font-weight: 700; letter-spacing: -1px; margin-top: 6px; line-height: 1.1; }
+  .stat .big small { font-size: 14px; color: var(--ink-3); font-weight: 600; margin-left: 4px; letter-spacing: 0; }
+  .stat .row { display: flex; justify-content: space-between; color: var(--ink-3); font-size: 12px; margin-top: 10px; gap: 8px; }
+  .stat .row b { color: var(--ink-2); font-family: var(--mono); font-weight: 600; white-space: nowrap; }
+  .meter { height: 6px; border-radius: 999px; background: var(--surface-2); margin-top: 12px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: var(--w, 0%); background: var(--c, var(--accent)); border-radius: 999px; transition: width .4s ease; }
+
+  .zones-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+  .zones-list li { display: grid; grid-template-columns: 12px 1fr auto auto; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-2); }
+  .zones-list li i { width: 10px; height: 10px; border-radius: 3px; }
+  .zones-list li b { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+  .zones-list li span:last-child { color: var(--ink-3); font-family: var(--mono); min-width: 40px; text-align: right; }
+  .zones-stack { display: flex; height: 14px; border-radius: 6px; overflow: hidden; gap: 2px; margin-top: 6px; }
+  .zones-stack i { display: block; height: 100%; min-width: 0; flex: 0 0 var(--w, 0%); transition: flex-basis .4s ease; }
+
+  .spo2 .big-row { display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; }
+  .spo2 .big { font-family: var(--mono); font-size: 44px; font-weight: 700; letter-spacing: -1px; line-height: 1; }
+  .spo2 .big small { font-size: 14px; color: var(--ink-3); font-weight: 600; margin-left: 4px; letter-spacing: 0; }
+  .spo2 .lbl { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+
+  .settings .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 16px; }
+  .field label { display: block; font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
+  .field input, .field select { width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+  .field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .note { font-size: 12px; color: var(--ink-3); line-height: 1.5; margin-top: 10px; }
+  .warn { grid-column: span 12; background: rgba(217,181,60,.12); border: 1px solid rgba(217,181,60,.4); color: var(--ink); border-radius: 14px; padding: 14px 18px; font-size: 14px; line-height: 1.5; }
+  .warn code, .note code { font-family: var(--mono); background: rgba(127,127,127,.18); padding: 1px 6px; border-radius: 6px; }
+  .hidden { display: none !important; }
+  .log { font-family: var(--mono); font-size: 11px; color: var(--ink-3); max-height: 120px; overflow: auto; margin-top: 12px; line-height: 1.5; white-space: pre-wrap; }
+  .table-view { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); margin-top: 8px; }
+  .table-view th, .table-view td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--border); color: var(--ink-2); }
+  .table-view th { color: var(--ink-3); font-weight: 600; }
+  details summary { cursor: pointer; font-size: 12px; color: var(--ink-3); margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8z"/><path d="M3.5 12h4l1.5-3 3 6 1.5-3h4"/>
+      </svg>
+      <div><h1>Pulso</h1><small>Monitor cardíaco · Polar H10</small></div>
+    </div>
+    <div class="toolbar">
+      <span id="status" class="status"><span class="dot"></span><span id="statusText">Sin conectar</span></span>
+      <span id="battery" class="status battery hidden" title="Batería del sensor"><i><b id="battLvl"></b></i><span id="battText">—</span></span>
+      <button id="themeBtn" class="btn ghost sm" title="Cambiar tema" aria-label="Cambiar tema">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A5.5 5.5 0 0 1 12 3z"/></svg>
+      </button>
+      <button id="connectBtn" class="btn primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
+        <span id="connectLabel">Conectar Polar H10</span>
+      </button>
+    </div>
+  </header>
+
+  <div id="btWarn" class="warn hidden" style="margin-bottom:16px">
+    <strong>Web Bluetooth no está disponible en este navegador.</strong> Usa Chrome o Edge. En Linux activa
+    <code>chrome://flags/#enable-experimental-web-platform-features</code> y reinicia el navegador. La página debe abrirse por
+    <code>http://localhost</code>, <code>https</code> o como archivo local.
+    <div style="margin-top:10px"><button id="dlBtn2" class="btn sm">Descargar esta app (index.html)</button>
+    <span style="font-size:12px;color:var(--ink-3);margin-left:8px">Guárdala y ábrela con Chrome o Edge en tu ordenador.</span></div>
+  </div>
+
+  <main class="grid">
+    <section class="card hero" aria-live="polite">
+      <div class="heart" id="heart" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+      </div>
+      <div class="bpm"><div class="value" id="bpm">--</div><div class="unit">latidos / min</div></div>
+      <div class="zone"><span class="pill"></span><span id="zoneName">Esperando señal</span></div>
+      <div class="zone-bar" id="zoneBar" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="contact" id="contact"></div>
+    </section>
+
+    <section class="card hrchart">
+      <div class="card-head">
+        <div><h2>Frecuencia cardíaca</h2><p class="sub">Evolución del pulso durante la sesión</p></div>
+        <div class="seg" id="hrWindow" role="group" aria-label="Ventana temporal">
+          <button data-w="60">1 min</button><button data-w="300" class="active">5 min</button><button data-w="900">15 min</button><button data-w="0">Todo</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="hrCanvas"></canvas><div class="tooltip" id="hrTip"></div></div>
+    </section>
+
+    <section class="card ecg">
+      <div class="card-head">
+        <div><h2>Electrocardiograma</h2><p class="sub">Señal ECG en vivo a 130 Hz (servicio PMD de Polar) · 25 mm/s</p></div>
+        <div style="text-align:right"><span class="badge off" id="ecgBadge">ECG INACTIVO</span><div class="diag" id="ecgDiag"></div></div>
+      </div>
+      <div class="chart-wrap"><canvas id="ecgCanvas"></canvas></div>
+    </section>
+
+    <section class="card stat"><h2>HRV · RMSSD</h2><div class="big"><span id="rmssd">--</span><small>ms</small></div>
+      <div class="row"><span>Últimos 60 latidos</span><b id="rrCount">0 RR</b></div></section>
+    <section class="card stat"><h2>HRV · SDNN</h2><div class="big"><span id="sdnn">--</span><small>ms</small></div>
+      <div class="row"><span>pNN50</span><b id="pnn50">--</b></div></section>
+    <section class="card stat"><h2>Intervalo RR</h2><div class="big"><span id="rrMean">--</span><small>ms</small></div>
+      <div class="row"><span>Último</span><b id="rrLast">--</b></div></section>
+    <section class="card stat"><h2>Sesión</h2><div class="big"><span id="elapsed">00:00</span></div>
+      <div class="row"><span>mín / media / máx</span><b id="hrStats">-- / -- / --</b></div></section>
+
+    <section class="card stat"><h2>Respiración</h2><div class="big"><span id="resp">--</span><small>rpm</small></div>
+      <div class="row"><span>Estimada por arritmia sinusal respiratoria</span><b id="respConf">--</b></div></section>
+    <section class="card stat"><h2>Índice de estrés</h2><div class="big"><span id="stress">--</span></div>
+      <div class="row"><span>Baevsky · 5 min</span><b id="stressLabel">--</b></div>
+      <div class="meter"><i id="stressMeter"></i></div></section>
+    <section class="card stat"><h2>Balance LF / HF</h2><div class="big"><span id="lfhf">--</span></div>
+      <div class="row"><span>LF <b id="lf">--</b></span><span>HF <b id="hf">--</b></span></div>
+      <div class="meter"><i id="lfhfMeter" style="--c: var(--rr-line)"></i></div></section>
+    <section class="card stat"><h2>Energía</h2><div class="big"><span id="kcal">--</span><small>kcal</small></div>
+      <div class="row"><span>Ritmo actual</span><b id="kcalRate">--</b></div></section>
+
+    <section class="card half rrchart">
+      <div class="card-head"><div><h2>Tacograma RR</h2><p class="sub">Duración de cada latido, últimos 120 intervalos</p></div></div>
+      <div class="chart-wrap"><canvas id="rrCanvas"></canvas><div class="tooltip" id="rrTip"></div></div>
+    </section>
+    <section class="card half poincare">
+      <div class="card-head"><div><h2>Diagrama de Poincaré</h2><p class="sub">Cada latido frente al siguiente · SD1 <b id="sd1">--</b> · SD2 <b id="sd2">--</b></p></div></div>
+      <div class="chart-wrap"><canvas id="poincareCanvas"></canvas></div>
+    </section>
+
+    <section class="card half">
+      <div class="card-head"><div><h2>Tiempo en zonas</h2><p class="sub">Distribución de la sesión según tu frecuencia máxima</p></div></div>
+      <div class="zones-stack" id="zonesStack" aria-hidden="true"></div>
+      <ul class="zones-list" id="zonesList"></ul>
+    </section>
+
+    <section class="card half spo2">
+      <div class="card-head">
+        <div><h2>Oxígeno en sangre · SpO₂</h2><p class="sub">El Polar H10 no mide oxígeno. Conecta un oxímetro de dedo Bluetooth compatible con el perfil estándar <em>Pulse Oximeter</em>.</p></div>
+        <button id="oxBtn" class="btn sm">Conectar oxímetro</button>
+      </div>
+      <div class="big-row">
+        <div><div class="lbl">Saturación</div><div class="big"><span id="spo2">--</span><small>%</small></div></div>
+        <div><div class="lbl">Pulso oxímetro</div><div class="big"><span id="oxPr">--</span><small>lpm</small></div></div>
+        <div><div class="lbl">Perfusión</div><div class="big"><span id="oxPi">--</span><small>%</small></div></div>
+      </div>
+      <div class="chart-wrap"><canvas id="spo2Canvas"></canvas><div class="tooltip" id="spo2Tip"></div></div>
+      <div class="diag" id="oxDiag"></div>
+    </section>
+
+    <section class="card settings">
+      <h2>Ajustes y sesión</h2>
+      <p class="sub">Las zonas usan tu frecuencia máxima; las calorías usan peso, edad y sexo (fórmula de Keytel). Todo se guarda en este navegador.</p>
+      <div class="form">
+        <div class="field"><label for="maxHr">Frecuencia máxima (lpm)</label><input id="maxHr" type="number" min="120" max="230" value="190"></div>
+        <div class="field"><label for="age">Edad (años)</label><input id="age" type="number" min="5" max="110" placeholder="p. ej. 35"></div>
+        <div class="field"><label for="weight">Peso (kg)</label><input id="weight" type="number" min="20" max="250" placeholder="p. ej. 75"></div>
+        <div class="field"><label for="sex">Sexo (para calorías)</label><select id="sex"><option value="m">Hombre</option><option value="f">Mujer</option></select></div>
+      </div>
+      <div class="actions">
+        <button id="ecgBtn" class="btn sm" disabled>Activar ECG</button>
+        <button id="resetBtn" class="btn sm">Reiniciar sesión</button>
+        <button id="csvBtn" class="btn sm">Exportar HR/RR (CSV)</button>
+        <button id="ecgCsvBtn" class="btn sm">Exportar ECG (CSV)</button>
+        <button id="demoBtn" class="btn sm ghost">Modo demo</button>
+        <button id="diagBtn" class="btn sm ghost">Copiar diagnóstico</button>
+        <button id="dlBtn" class="btn sm ghost">Descargar esta app</button>
+      </div>
+      <p class="note">Las métricas de variabilidad, respiración y estrés son estimaciones orientativas y no constituyen diagnóstico médico.</p>
+      <details><summary>Ver datos en tabla (últimos 20 registros)</summary>
+        <table class="table-view"><thead><tr><th>Hora</th><th>lpm</th><th>RR (ms)</th></tr></thead><tbody id="tableBody"></tbody></table>
+      </details>
+      <div class="log" id="log" aria-label="Registro"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  // ================= Constantes BLE =================
+  const HR_SERVICE = 'heart_rate', HR_MEASUREMENT = 'heart_rate_measurement';
+  const BATTERY_SERVICE = 'battery_service', BATTERY_LEVEL = 'battery_level';
+  const PMD_SERVICE = 'fb005c80-02e7-f387-1cad-8acd2d8df0c8';
+  const PMD_CONTROL = 'fb005c81-02e7-f387-1cad-8acd2d8df0c8';
+  const PMD_DATA    = 'fb005c82-02e7-f387-1cad-8acd2d8df0c8';
+  const PMD_ECG_START = new Uint8Array([0x02, 0x00, 0x00, 0x01, 0x82, 0x00, 0x01, 0x01, 0x0E, 0x00]); // ECG 130 Hz, 14 bits
+  const PMD_ECG_STOP  = new Uint8Array([0x03, 0x00]);
+  const PMD_STATUS = ['OK', 'código de operación inválido', 'tipo de medida inválido', 'no soportado', 'longitud inválida', 'parámetro inválido',
+    'ya estaba en ese estado', 'resolución inválida', 'frecuencia de muestreo inválida', 'rango inválido', 'MTU inválido', 'número de canales inválido',
+    'estado inválido', 'dispositivo en el cargador'];
+  const ECG_RATE = 130;
+  const PLX_SERVICE = 'pulse_oximeter', PLX_CONTINUOUS = 'plx_continuous_measurement', PLX_SPOT = 'plx_spot_check_measurement';
+
+  // ================= Estado =================
+  const S = {
+    device: null, server: null, pmdControl: null, pmdData: null, pmdWaiter: null,
+    ecgOn: false, ecgFrames: 0, ecgBytes: 0, ecgLastAt: 0, ecgFirstHeader: '', pmdFeatures: '', pmdResponses: [], ecgAttempt: 0, ecgWatch: null,
+    demo: false, demoTimer: null,
+    sessionStart: null,
+    hr: [], rr: [],
+    ecg: new Float32Array(ECG_RATE * 8), ecgHead: 0, ecgCount: 0, ecgAll: [],
+    lastBeat: performance.now(), period: 1000, bpm: 0,
+    hrWindow: 300, maxHr: 190, age: null, weight: null, sex: 'm',
+    zoneSec: [0, 0, 0, 0, 0, 0], kcal: 0, kcalRate: 0, lastSampleT: null,
+    ox: { device: null, spo2: [], last: null },
+    reconnectTries: 0,
+  };
+  const $ = id => document.getElementById(id);
+  const ZONES = [
+    { name: 'Reposo',               lim: 0.50, color: 'var(--z0)', rgb: '255,77,109' },
+    { name: 'Muy ligero',           lim: 0.60, color: 'var(--z1)', rgb: '79,127,214' },
+    { name: 'Ligero · quema grasa', lim: 0.70, color: 'var(--z2)', rgb: '51,181,138' },
+    { name: 'Moderado · aeróbico',  lim: 0.80, color: 'var(--z3)', rgb: '217,181,60' },
+    { name: 'Intenso · anaeróbico', lim: 0.90, color: 'var(--z4)', rgb: '240,134,58' },
+    { name: 'Máximo',               lim: 9.99, color: 'var(--z5)', rgb: '255,46,46' },
+  ];
+
+  // ================= Utilidades =================
+  const log = (msg) => {
+    const el = $('log'), t = new Date().toLocaleTimeString('es-ES');
+    el.textContent = `[${t}] ${msg}\n` + el.textContent.split('\n').slice(0, 200).join('\n');
+    console.log('[Pulso]', msg);
+  };
+  const hex = (dv) => [...new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)].map(b => b.toString(16).padStart(2, '0')).join(' ');
+  const fmtTime = (ms) => {
+    const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60), p = n => String(n).padStart(2, '0');
+    return h ? `${h}:${p(m % 60)}:${p(s % 60)}` : `${p(m)}:${p(s % 60)}`;
+  };
+  const clock = (t) => new Date(t).toLocaleTimeString('es-ES');
+  const setStatus = (text, cls) => { $('statusText').textContent = text; $('status').className = 'status ' + (cls || ''); };
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const zoneIndex = (bpm) => { const r = bpm / S.maxHr; let i = ZONES.findIndex(z => r < z.lim); return i < 0 ? ZONES.length - 1 : i; };
+  const validRr = () => S.rr.filter(r => r.ms > 300 && r.ms < 2500);
+
+  // ================= Sesión / métricas =================
+  function resetSession() {
+    S.hr = []; S.rr = []; S.ecgAll = []; S.ecgCount = 0; S.ecgHead = 0; S.ecg.fill(0);
+    S.sessionStart = null; S.bpm = 0; S.zoneSec = [0, 0, 0, 0, 0, 0]; S.kcal = 0; S.kcalRate = 0; S.lastSampleT = null;
+    S.ox.spo2 = []; S.ox.last = null;
+    $('bpm').textContent = '--';
+    updateStats(); updateSpectral(); updateZones(); updateEnergy(); updateOx(); drawAll();
+    log('Sesión reiniciada');
+  }
+
+  function onHeartRate(bpm, rrList, contact) {
+    const now = Date.now();
+    if (!S.sessionStart) S.sessionStart = now;
+    S.bpm = bpm;
+    S.hr.push({ t: now, bpm });
+    if (S.hr.length > 40000) S.hr.shift();
+    for (const ms of rrList) {
+      S.rr.push({ t: now, ms });
+      if (ms > 300 && ms < 2500) S.period = S.period * 0.5 + ms * 0.5;
+    }
+    if (S.rr.length > 40000) S.rr.splice(0, S.rr.length - 40000);
+    if (!rrList.length && bpm > 0) S.period = 60000 / bpm;
+
+    if (bpm > 0) {
+      const dt = S.lastSampleT ? Math.min(5, (now - S.lastSampleT) / 1000) : 1;
+      S.zoneSec[zoneIndex(bpm)] += dt;
+      const rate = kcalPerMin(bpm);
+      if (rate != null) { S.kcal += rate * dt / 60; S.kcalRate = rate; }
+    }
+    S.lastSampleT = now;
+
+    $('bpm').textContent = bpm > 0 ? bpm : '--';
+    $('contact').textContent = contact === false ? 'Sin contacto con la piel · humedece los electrodos' : (contact === true ? 'Buen contacto con la piel' : '');
+    updateZone(bpm); updateStats(); updateSpectral(); updateZones(); updateEnergy(); updateTable();
+  }
+
+  // Keytel (2005) para esfuerzo; por debajo del 50 % de la FC máx. se usa un gasto de reposo (~1 kcal/kg/h) con transición suave
+  function kcalPerMin(bpm) {
+    if (!S.weight || !S.age) return null;
+    const w = S.weight, a = S.age;
+    const kj = S.sex === 'f' ? (-20.4022 + 0.4472 * bpm - 0.1263 * w + 0.074 * a) : (-55.0969 + 0.6309 * bpm + 0.1988 * w + 0.2017 * a);
+    const exercise = Math.max(0, kj / 4.184), rest = w / 60;
+    const r = bpm / S.maxHr;
+    if (r <= 0.5) return rest;
+    if (r >= 0.6) return Math.max(rest, exercise);
+    const k = (r - 0.5) / 0.1;
+    return rest + k * (Math.max(rest, exercise) - rest);
+  }
+
+  function updateZone(bpm) {
+    const idx = zoneIndex(bpm), z = ZONES[idx];
+    $('zoneName').textContent = bpm > 0 ? `${z.name} · ${Math.round(bpm / S.maxHr * 100)} % de máx.` : 'Esperando señal';
+    document.documentElement.style.setProperty('--zone-color', z.color);
+    document.documentElement.style.setProperty('--zone-glow', `rgba(${z.rgb},.28)`);
+    [...$('zoneBar').children].forEach((el, i) => el.classList.toggle('active', i <= idx && bpm > 0));
+  }
+
+  function updateStats() {
+    const rrs = validRr().map(r => r.ms), last60 = rrs.slice(-60);
+    let rmssd = null;
+    if (last60.length >= 3) { let s = 0; for (let i = 1; i < last60.length; i++) s += (last60[i] - last60[i - 1]) ** 2; rmssd = Math.sqrt(s / (last60.length - 1)); }
+    let sdnn = null, pnn50 = null, mean = null, sd1 = null, sd2 = null;
+    if (rrs.length >= 3) {
+      mean = rrs.reduce((a, b) => a + b, 0) / rrs.length;
+      sdnn = Math.sqrt(rrs.reduce((a, b) => a + (b - mean) ** 2, 0) / (rrs.length - 1));
+      let n50 = 0, sdsd2 = 0;
+      for (let i = 1; i < rrs.length; i++) { const d = rrs[i] - rrs[i - 1]; if (Math.abs(d) > 50) n50++; sdsd2 += d * d; }
+      sdsd2 /= (rrs.length - 1);
+      pnn50 = n50 / (rrs.length - 1) * 100;
+      sd1 = Math.sqrt(0.5 * sdsd2);
+      sd2 = Math.sqrt(Math.max(0, 2 * sdnn * sdnn - 0.5 * sdsd2));
+    }
+    $('rmssd').textContent = rmssd == null ? '--' : rmssd.toFixed(0);
+    $('sdnn').textContent = sdnn == null ? '--' : sdnn.toFixed(0);
+    $('pnn50').textContent = pnn50 == null ? '--' : pnn50.toFixed(0) + ' %';
+    $('rrMean').textContent = mean == null ? '--' : mean.toFixed(0);
+    $('rrLast').textContent = rrs.length ? rrs[rrs.length - 1] + ' ms' : '--';
+    $('rrCount').textContent = `${last60.length} RR`;
+    $('sd1').textContent = sd1 == null ? '--' : sd1.toFixed(0) + ' ms';
+    $('sd2').textContent = sd2 == null ? '--' : sd2.toFixed(0) + ' ms';
+    const b = S.hr.map(h => h.bpm).filter(v => v > 0);
+    $('hrStats').textContent = b.length ? `${Math.min(...b)} / ${(b.reduce((a, c) => a + c, 0) / b.length).toFixed(0)} / ${Math.max(...b)}` : '-- / -- / --';
+    updateStress(rrs);
+  }
+
+  // Índice de estrés de Baevsky sobre los últimos 5 minutos de RR
+  function updateStress(rrs) {
+    const win = []; let acc = 0;
+    for (let i = rrs.length - 1; i >= 0 && acc < 300000; i--) { win.push(rrs[i]); acc += rrs[i]; }
+    if (win.length < 60) { $('stress').textContent = '--'; $('stressLabel').textContent = `faltan ${60 - win.length} latidos`; $('stressMeter').style.setProperty('--w', '0%'); return; }
+    const bins = new Map();
+    for (const v of win) { const k = Math.floor(v / 50); bins.set(k, (bins.get(k) || 0) + 1); }
+    let modeK = 0, modeN = 0; for (const [k, n] of bins) if (n > modeN) { modeN = n; modeK = k; }
+    const Mo = (modeK * 50 + 25) / 1000, AMo = modeN / win.length * 100, MxDMn = (Math.max(...win) - Math.min(...win)) / 1000;
+    const si = AMo / (2 * Mo * Math.max(MxDMn, 0.02));
+    const label = si < 50 ? 'muy relajado' : si < 150 ? 'normal' : si < 300 ? 'tensión moderada' : si < 500 ? 'tensión alta' : 'tensión muy alta';
+    $('stress').textContent = si.toFixed(0);
+    $('stressLabel').textContent = label;
+    $('stressMeter').style.setProperty('--w', Math.min(100, si / 6) + '%');
+    $('stressMeter').style.setProperty('--c', si < 150 ? 'var(--z2)' : si < 300 ? 'var(--z3)' : 'var(--z5)');
+  }
+
+  // Espectro de la serie RR: interpolación a 4 Hz, detrend, Hann y DFT en la banda pedida
+  function rrSpectrum(windowSec, fmin, fmax, df) {
+    const rrs = validRr().map(r => r.ms);
+    const win = []; let acc = 0;
+    for (let i = rrs.length - 1; i >= 0 && acc < windowSec * 1000; i--) { win.unshift(rrs[i]); acc += rrs[i]; }
+    if (win.length < 24 || acc < Math.min(windowSec, 40) * 1000) return null;
+    const t = []; let ct = 0; for (const v of win) { ct += v / 1000; t.push(ct); }
+    const fs = 4, n = Math.floor((t[t.length - 1] - t[0]) * fs), x = new Float64Array(n);
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      const ti = t[0] + i / fs;
+      while (j < t.length - 2 && t[j + 1] < ti) j++;
+      const a = (ti - t[j]) / (t[j + 1] - t[j] || 1);
+      x[i] = win[j] + a * (win[j + 1] - win[j]);
+    }
+    let mx = 0, mt = 0; for (let i = 0; i < n; i++) { mx += x[i]; mt += i; } mx /= n; mt /= n;
+    let sxy = 0, sxx = 0; for (let i = 0; i < n; i++) { sxy += (i - mt) * (x[i] - mx); sxx += (i - mt) ** 2; }
+    const slope = sxx ? sxy / sxx : 0;
+    for (let i = 0; i < n; i++) x[i] = (x[i] - mx - slope * (i - mt)) * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)));
+    const freqs = [], power = [];
+    for (let f = fmin; f <= fmax + 1e-9; f += df) {
+      let re = 0, im = 0; const w = 2 * Math.PI * f / fs;
+      for (let i = 0; i < n; i++) { re += x[i] * Math.cos(w * i); im -= x[i] * Math.sin(w * i); }
+      freqs.push(f); power.push((re * re + im * im) / n);
+    }
+    return { freqs, power, seconds: acc / 1000 };
+  }
+
+  function updateSpectral() {
+    // Respiración: pico entre 0.08 y 0.55 Hz (5–33 rpm) sobre los últimos 60 s
+    const r = rrSpectrum(60, 0.08, 0.55, 0.005);
+    if (r) {
+      let bi = 0; for (let i = 1; i < r.power.length; i++) if (r.power[i] > r.power[bi]) bi = i;
+      const total = r.power.reduce((a, b) => a + b, 0), share = total ? r.power[bi] / total : 0;
+      $('resp').textContent = (r.freqs[bi] * 60).toFixed(1);
+      $('respConf').textContent = share > 0.18 ? 'señal clara' : share > 0.10 ? 'señal moderada' : 'señal débil';
+    } else { $('resp').textContent = '--'; $('respConf').textContent = 'recopilando…'; }
+    // LF/HF sobre los últimos 5 min (mínimo 2 min)
+    const s = rrSpectrum(300, 0.04, 0.40, 0.0025);
+    if (s && s.seconds >= 120) {
+      let lf = 0, hf = 0;
+      s.freqs.forEach((f, i) => { if (f < 0.15) lf += s.power[i]; else hf += s.power[i]; });
+      const tot = lf + hf || 1;
+      $('lfhf').textContent = (hf ? lf / hf : 0).toFixed(2);
+      $('lf').textContent = (lf / tot * 100).toFixed(0) + ' %'; $('hf').textContent = (hf / tot * 100).toFixed(0) + ' %';
+      $('lfhfMeter').style.setProperty('--w', (lf / tot * 100) + '%');
+    } else {
+      $('lfhf').textContent = '--'; $('lf').textContent = '--'; $('hf').textContent = s ? `faltan ${Math.ceil(120 - s.seconds)} s` : '--';
+      $('lfhfMeter').style.setProperty('--w', '0%');
+    }
+  }
+
+  function updateZones() {
+    const total = S.zoneSec.reduce((a, b) => a + b, 0) || 1;
+    $('zonesStack').innerHTML = ZONES.map((z, i) => `<i style="--w:${(S.zoneSec[i] / total * 100).toFixed(2)}%; background:${z.color}"></i>`).join('');
+    $('zonesList').innerHTML = ZONES.map((z, i) => {
+      const lo = i ? Math.round(ZONES[i - 1].lim * S.maxHr) : 0, hi = i < 5 ? Math.round(z.lim * S.maxHr) : '';
+      return `<li><i style="background:${z.color}"></i><span>${z.name} <span style="color:var(--ink-3)">${hi ? `${lo}–${hi}` : `≥ ${lo}`} lpm</span></span><b>${fmtTime(S.zoneSec[i] * 1000)}</b><span>${(S.zoneSec[i] / total * 100).toFixed(0)} %</span></li>`;
+    }).join('');
+  }
+
+  function updateEnergy() {
+    if (!S.weight || !S.age) { $('kcal').textContent = '--'; $('kcalRate').textContent = 'indica peso y edad'; return; }
+    $('kcal').textContent = S.kcal.toFixed(0);
+    $('kcalRate').textContent = (S.kcalRate * 60).toFixed(0) + ' kcal/h';
+  }
+
+  function updateTable() {
+    $('tableBody').innerHTML = S.hr.slice(-20).reverse().map(h => {
+      const rr = S.rr.filter(r => r.t === h.t).map(r => r.ms).join(', ');
+      return `<tr><td>${clock(h.t)}</td><td>${h.bpm}</td><td>${rr || '—'}</td></tr>`;
+    }).join('');
+  }
+
+  setInterval(() => {
+    $('elapsed').textContent = S.sessionStart ? fmtTime(Date.now() - S.sessionStart) : '00:00';
+    if (S.ecgOn || S.ecgFrames) {
+      const stale = S.ecgLastAt && Date.now() - S.ecgLastAt > 3000;
+      $('ecgDiag').textContent = `${S.ecgFrames} paquetes · ${(S.ecgBytes / 1024).toFixed(1)} kB` + (stale ? ' · sin datos desde hace ' + fmtTime(Date.now() - S.ecgLastAt) : '');
+      if (S.ecgOn && !S.demo) { $('ecgBadge').className = 'badge' + (stale || !S.ecgFrames ? ' warn' : ''); $('ecgBadge').textContent = !S.ecgFrames ? 'ECG SIN PAQUETES' : stale ? 'ECG INTERRUMPIDO' : 'ECG EN VIVO'; }
+    }
+  }, 500);
+
+  // ================= Parsers BLE =================
+  function parseHeartRate(dv) {
+    const flags = dv.getUint8(0), hr16 = flags & 0x01, contactSupported = flags & 0x04;
+    const contact = contactSupported ? !!(flags & 0x02) : null, energy = flags & 0x08, rrPresent = flags & 0x10;
+    let i = 1;
+    const bpm = hr16 ? dv.getUint16(i, true) : dv.getUint8(i); i += hr16 ? 2 : 1;
+    if (energy) i += 2;
+    const rr = [];
+    if (rrPresent) for (; i + 1 < dv.byteLength; i += 2) rr.push(Math.round(dv.getUint16(i, true) / 1024 * 1000));
+    return { bpm, rr, contact };
+  }
+
+  function parsePmdData(dv) {
+    S.ecgFrames++; S.ecgBytes += dv.byteLength; S.ecgLastAt = Date.now();
+    if (!S.ecgFirstHeader) { S.ecgFirstHeader = hex(new DataView(dv.buffer, dv.byteOffset, Math.min(12, dv.byteLength))); log(`Primer paquete PMD (${dv.byteLength} bytes): ${S.ecgFirstHeader}…`); }
+    if (dv.byteLength < 10) return;
+    const type = dv.getUint8(0), frameType = dv.getUint8(9);
+    if (type !== 0x00) { if (S.ecgFrames === 1) log(`Paquete PMD de tipo ${type} (no es ECG), se ignora`); return; }
+    if (frameType !== 0x00) { if (S.ecgFrames === 1) log(`Frame ECG de tipo 0x${frameType.toString(16)} no soportado`); return; }
+    const samples = [];
+    for (let i = 10; i + 2 < dv.byteLength; i += 3) {
+      let v = dv.getUint8(i) | (dv.getUint8(i + 1) << 8) | (dv.getUint8(i + 2) << 16);
+      if (v & 0x800000) v -= 0x1000000;
+      samples.push(v);
+    }
+    pushEcg(samples);
+  }
+
+  function pushEcg(samples) {
+    for (const v of samples) {
+      S.ecg[S.ecgHead] = v; S.ecgHead = (S.ecgHead + 1) % S.ecg.length; S.ecgCount++;
+      if (S.ecgAll.length < ECG_RATE * 3600) S.ecgAll.push(v);
+    }
+  }
+
+  // SFLOAT IEEE-11073 de 16 bits
+  function sfloat(dv, off) {
+    const raw = dv.getUint16(off, true);
+    if (raw === 0x07FF || raw === 0x0800 || raw === 0x07FE || raw === 0x0802) return null;
+    let mant = raw & 0x0FFF, exp = raw >> 12;
+    if (mant >= 0x0800) mant -= 0x1000;
+    if (exp >= 0x8) exp -= 0x10;
+    return mant * Math.pow(10, exp);
+  }
+  function parsePlx(dv, spot) {
+    const flags = dv.getUint8(0);
+    let i = 1;
+    const spo2 = sfloat(dv, i); i += 2; const pr = sfloat(dv, i); i += 2;
+    if (spot) { if (flags & 0x01) i += 7; if (flags & 0x02) i += 2; if (flags & 0x04) i += 3; }
+    else { if (flags & 0x01) i += 4; if (flags & 0x02) i += 4; if (flags & 0x04) i += 2; if (flags & 0x08) i += 3; }
+    const pi = (spot ? (flags & 0x08) : (flags & 0x10)) && i + 1 < dv.byteLength ? sfloat(dv, i) : null;
+    return { spo2, pr, pi };
+  }
+
+  // ================= Conexión Polar =================
+  async function connect() {
+    if (!navigator.bluetooth) { $('btWarn').classList.remove('hidden'); return; }
+    try {
+      setStatus('Buscando sensor…', 'busy');
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'Polar' }, { services: [HR_SERVICE] }],
+        optionalServices: [HR_SERVICE, BATTERY_SERVICE, PMD_SERVICE],
+      });
+      S.device = device;
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+      await gattConnect();
+    } catch (e) {
+      if (e.name === 'NotFoundError') { setStatus('Sin conectar', ''); log('Selección cancelada'); }
+      else { setStatus('Error', ''); log('Error: ' + e.message); }
+    }
+  }
+
+  async function gattConnect() {
+    setStatus('Conectando…', 'busy');
+    const server = await S.device.gatt.connect();
+    S.server = server;
+    log(`Conectado a ${S.device.name || 'sensor'}`);
+
+    const hrSvc = await server.getPrimaryService(HR_SERVICE);
+    const hrChar = await hrSvc.getCharacteristic(HR_MEASUREMENT);
+    hrChar.addEventListener('characteristicvaluechanged', ev => { const { bpm, rr, contact } = parseHeartRate(ev.target.value); onHeartRate(bpm, rr, contact); });
+    await hrChar.startNotifications();
+
+    try {
+      const battSvc = await server.getPrimaryService(BATTERY_SERVICE);
+      const battChar = await battSvc.getCharacteristic(BATTERY_LEVEL);
+      showBattery((await battChar.readValue()).getUint8(0));
+      try { battChar.addEventListener('characteristicvaluechanged', ev => showBattery(ev.target.value.getUint8(0))); await battChar.startNotifications(); } catch {}
+    } catch { log('Servicio de batería no disponible'); }
+
+    try {
+      const pmd = await server.getPrimaryService(PMD_SERVICE);
+      S.pmdControl = await pmd.getCharacteristic(PMD_CONTROL);
+      S.pmdData = await pmd.getCharacteristic(PMD_DATA);
+      S.pmdControl.addEventListener('characteristicvaluechanged', onPmdControl);
+      await S.pmdControl.startNotifications();
+      S.pmdData.addEventListener('characteristicvaluechanged', ev => parsePmdData(ev.target.value));
+      await S.pmdData.startNotifications();
+      $('ecgBtn').disabled = false;
+      try { const f = await S.pmdControl.readValue(); S.pmdFeatures = hex(f); log(`PMD características: ${S.pmdFeatures}` + ((f.byteLength > 1 && (f.getUint8(1) & 0x01)) ? ' · ECG soportado' : ' · el sensor NO anuncia ECG')); } catch (e) { log('No se pudo leer el punto de control PMD: ' + e.message); }
+      await startEcg();
+    } catch (e) { log('Servicio PMD (ECG) no disponible: ' + e.message); $('ecgDiag').textContent = 'servicio PMD no encontrado'; }
+
+    S.reconnectTries = 0;
+    setStatus(S.device.name || 'Conectado', 'on');
+    $('connectLabel').textContent = 'Desconectar';
+    $('demoBtn').disabled = true;
+  }
+
+  function onPmdControl(ev) {
+    const dv = ev.target.value, bytes = hex(dv);
+    if (dv.getUint8(0) === 0xF0 && dv.byteLength >= 4) {
+      const op = dv.getUint8(1), type = dv.getUint8(2), status = dv.getUint8(3);
+      log(`Respuesta PMD (op ${op}, tipo ${type}): ${PMD_STATUS[status] || 'estado ' + status} [${bytes}]`);
+      S.pmdResponses.push(bytes); if (S.pmdResponses.length > 20) S.pmdResponses.shift();
+      if (S.pmdWaiter) { S.pmdWaiter({ op, type, status }); S.pmdWaiter = null; }
+    } else log(`Notificación PMD: ${bytes}`);
+  }
+
+  async function pmdWrite(cmd) {
+    const p = new Promise(res => { S.pmdWaiter = res; setTimeout(() => { if (S.pmdWaiter) { S.pmdWaiter = null; res(null); } }, 3000); });
+    if (S.pmdControl.writeValueWithResponse) await S.pmdControl.writeValueWithResponse(cmd); else await S.pmdControl.writeValue(cmd);
+    return p;
+  }
+
+  const PMD_ECG_SETTINGS_QUERY = new Uint8Array([0x01, 0x00]);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  async function startEcg() {
+    if (!S.pmdControl || !S.server?.connected) return;
+    clearTimeout(S.ecgWatch);
+    S.ecgAttempt = 0;
+    await tryStartEcg();
+  }
+
+  // Estrategias sucesivas: 1) orden normal · 2) detener + reiniciar · 3) reactivar notificaciones + escritura sin respuesta · 4) consultar ajustes y reintentar
+  async function tryStartEcg() {
+    S.ecgAttempt++;
+    const attempt = S.ecgAttempt;
+    S.ecgFrames = 0; S.ecgBytes = 0; S.ecgLastAt = 0; S.ecgFirstHeader = '';
+    $('ecgDiag').textContent = `intento ${attempt}/4 · enviando orden de inicio…`;
+    try {
+      let r;
+      if (attempt === 2) { await pmdWrite(PMD_ECG_STOP); await sleep(400); }
+      if (attempt === 3) {
+        try { await S.pmdData.stopNotifications(); } catch {}
+        await sleep(200);
+        await S.pmdData.startNotifications();
+        log('Notificaciones de datos PMD reactivadas');
+      }
+      if (attempt === 4) {
+        const q = await pmdWrite(PMD_ECG_SETTINGS_QUERY);
+        log(q ? 'Ajustes ECG que admite el sensor recibidos (ver respuesta PMD anterior)' : 'El sensor no respondió a la consulta de ajustes');
+        await sleep(200);
+      }
+      if (attempt === 3 && S.pmdControl.writeValueWithoutResponse) {
+        const p = new Promise(res => { S.pmdWaiter = res; setTimeout(() => { if (S.pmdWaiter) { S.pmdWaiter = null; res(null); } }, 3000); });
+        await S.pmdControl.writeValueWithoutResponse(PMD_ECG_START); r = await p;
+      } else r = await pmdWrite(PMD_ECG_START);
+
+      if (r && r.status === 12 && attempt === 1) { log('El sensor estaba en un estado inválido; se detiene y reintenta'); return tryStartEcg(); }
+      if (r && r.status !== 0 && r.status !== 6) {
+        $('ecgDiag').textContent = 'el sensor rechazó el ECG: ' + (PMD_STATUS[r.status] || r.status);
+        if (attempt < 4) { await sleep(500); return tryStartEcg(); }
+        return;
+      }
+      S.ecgOn = true; $('ecgBadge').textContent = 'ECG EN VIVO'; $('ecgBadge').className = 'badge'; $('ecgBtn').textContent = 'Detener ECG';
+      $('ecgDiag').textContent = r ? 'orden aceptada · esperando paquetes…' : 'sin respuesta del punto de control · esperando paquetes…';
+      log(`ECG iniciado a 130 Hz (intento ${attempt}${r ? '' : ', sin confirmación'})`);
+      // vigilancia: si en 4 s no llega ningún paquete, probar la siguiente estrategia
+      clearTimeout(S.ecgWatch);
+      S.ecgWatch = setTimeout(async () => {
+        if (!S.ecgOn || !S.server?.connected || S.demo) return;
+        if (S.ecgFrames > 0) return;
+        if (attempt < 4) { log(`Sin paquetes ECG tras 4 s; probando estrategia ${attempt + 1}`); await tryStartEcg(); }
+        else {
+          log('El sensor acepta la orden pero no envía datos. Comprueba contacto con la piel y firmware; pulsa «Copiar diagnóstico» y compártelo.');
+          $('ecgDiag').textContent = 'orden aceptada pero sin datos · revisa contacto/firmware';
+        }
+      }, 4000);
+    } catch (e) {
+      log(`No se pudo iniciar el ECG (intento ${attempt}): ${e.name} · ${e.message}`);
+      $('ecgDiag').textContent = 'error: ' + e.message;
+      if (attempt < 4 && S.server?.connected) { await sleep(500); return tryStartEcg(); }
+    }
+  }
+  async function stopEcg() {
+    clearTimeout(S.ecgWatch);
+    if (S.pmdControl && S.server?.connected) { try { await pmdWrite(PMD_ECG_STOP); } catch {} }
+    S.ecgOn = false; $('ecgBadge').textContent = 'ECG INACTIVO'; $('ecgBadge').className = 'badge off'; $('ecgBtn').textContent = 'Activar ECG';
+  }
+
+  function showBattery(level) {
+    $('battery').classList.remove('hidden'); $('battText').textContent = level + ' %';
+    $('battLvl').style.setProperty('--lvl', level + '%'); $('battery').style.color = level < 20 ? 'var(--z5)' : '';
+  }
+
+  async function onDisconnected() {
+    S.ecgOn = false; $('ecgBadge').textContent = 'ECG INACTIVO'; $('ecgBadge').className = 'badge off'; $('ecgBtn').disabled = true;
+    if (S.device && S.reconnectTries < 5) {
+      S.reconnectTries++;
+      setStatus(`Reconectando (${S.reconnectTries}/5)…`, 'busy'); log('Conexión perdida, reintentando…');
+      await new Promise(r => setTimeout(r, 1500 * S.reconnectTries));
+      try { await gattConnect(); return; } catch (e) { log('Reintento fallido: ' + e.message); if (S.device) onDisconnected(); return; }
+    }
+    setStatus('Desconectado', ''); $('connectLabel').textContent = 'Conectar Polar H10'; $('battery').classList.add('hidden'); $('demoBtn').disabled = false;
+  }
+
+  function disconnect() {
+    const d = S.device; S.device = null;
+    stopEcg();
+    if (d?.gatt.connected) d.gatt.disconnect();
+    setStatus('Desconectado', ''); $('connectLabel').textContent = 'Conectar Polar H10';
+    $('battery').classList.add('hidden'); $('ecgBtn').disabled = true; $('demoBtn').disabled = false;
+    log('Desconectado por el usuario');
+  }
+
+  // ================= Oxímetro (perfil BLE Pulse Oximeter) =================
+  async function connectOx() {
+    if (S.ox.device) { S.ox.device.gatt.disconnect(); return; }
+    if (!navigator.bluetooth) { $('btWarn').classList.remove('hidden'); return; }
+    try {
+      $('oxDiag').textContent = 'buscando oxímetro…';
+      const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [PLX_SERVICE] }], optionalServices: [BATTERY_SERVICE] });
+      const server = await device.gatt.connect();
+      const svc = await server.getPrimaryService(PLX_SERVICE);
+      let got = false;
+      try { const c = await svc.getCharacteristic(PLX_CONTINUOUS); c.addEventListener('characteristicvaluechanged', ev => onOx(parsePlx(ev.target.value, false))); await c.startNotifications(); got = true; } catch {}
+      try { const c = await svc.getCharacteristic(PLX_SPOT); c.addEventListener('characteristicvaluechanged', ev => onOx(parsePlx(ev.target.value, true))); await c.startNotifications(); got = true; } catch {}
+      if (!got) throw new Error('el oxímetro no expone medidas PLX');
+      S.ox.device = device;
+      device.addEventListener('gattserverdisconnected', () => { S.ox.device = null; $('oxBtn').textContent = 'Conectar oxímetro'; $('oxDiag').textContent = 'oxímetro desconectado'; });
+      $('oxBtn').textContent = 'Desconectar oxímetro'; $('oxDiag').textContent = `conectado a ${device.name || 'oxímetro'}`; log(`Oxímetro conectado: ${device.name || '(sin nombre)'}`);
+    } catch (e) {
+      $('oxDiag').textContent = e.name === 'NotFoundError' ? 'ningún oxímetro seleccionado' : 'error: ' + e.message;
+      log('Oxímetro: ' + e.message);
+    }
+  }
+  function onOx(m) {
+    if (m.spo2 == null && m.pr == null) return;
+    const now = Date.now();
+    S.ox.last = { ...m, t: now };
+    if (m.spo2 != null) { S.ox.spo2.push({ t: now, v: m.spo2 }); if (S.ox.spo2.length > 4000) S.ox.spo2.shift(); }
+    updateOx();
+  }
+  function updateOx() {
+    const m = S.ox.last;
+    $('spo2').textContent = m?.spo2 != null ? Math.round(m.spo2) : '--';
+    $('oxPr').textContent = m?.pr != null ? Math.round(m.pr) : '--';
+    $('oxPi').textContent = m?.pi != null ? m.pi.toFixed(1) : '--';
+    $('spo2').style.color = m?.spo2 != null && m.spo2 < 90 ? 'var(--z5)' : m?.spo2 != null && m.spo2 < 94 ? 'var(--z3)' : '';
+  }
+
+  // ================= Modo demo =================
+  function toggleDemo() {
+    if (S.demo) {
+      clearInterval(S.demoTimer.hr); clearInterval(S.demoTimer.ecg); clearInterval(S.demoTimer.ox);
+      S.demo = false; $('demoBtn').textContent = 'Modo demo'; $('connectBtn').disabled = false;
+      S.ecgOn = false; $('ecgBadge').textContent = 'ECG INACTIVO'; $('ecgBadge').className = 'badge off'; $('ecgBtn').textContent = 'Activar ECG'; $('ecgBtn').disabled = true;
+      setStatus('Sin conectar', ''); $('battery').classList.add('hidden'); $('oxDiag').textContent = '';
+      log('Demo detenida'); return;
+    }
+    S.demo = true; $('demoBtn').textContent = 'Detener demo'; $('connectBtn').disabled = true; $('ecgBtn').disabled = false;
+    setStatus('Demo · sensor simulado', 'on'); showBattery(78);
+    S.ecgOn = true; $('ecgBadge').textContent = 'ECG SIMULADO'; $('ecgBadge').className = 'badge'; $('ecgBtn').textContent = 'Detener ECG'; $('ecgDiag').textContent = 'datos sintéticos';
+    $('oxDiag').textContent = 'oxímetro simulado';
+    let base = 64, phase = 0; const t0 = performance.now();
+    const hrTick = () => {
+      base += (Math.random() - 0.5) * 1.2 + (72 - base) * 0.02;
+      const breath = 4 * Math.sin((performance.now() - t0) / 1000 * 2 * Math.PI * 0.25); // 15 rpm
+      const bpm = Math.round(base + breath);
+      onHeartRate(bpm, [Math.round(60000 / (base + breath) + (Math.random() - 0.5) * 20)], true);
+    };
+    const ecgTick = () => {
+      const n = Math.round(ECG_RATE / 10), out = [];
+      for (let i = 0; i < n; i++) { phase += 1 / ECG_RATE / (S.period / 1000); if (phase >= 1) phase -= 1; out.push(Math.round(syntheticEcg(phase) * 1000 + (Math.random() - 0.5) * 12)); }
+      if (S.ecgOn) { pushEcg(out); S.ecgFrames++; S.ecgBytes += n * 3; S.ecgLastAt = Date.now(); }
+    };
+    const oxTick = () => onOx({ spo2: Math.round(96 + Math.random() * 2.4), pr: Math.round(S.bpm + (Math.random() - 0.5) * 3), pi: 3 + Math.random() * 2 });
+    S.demoTimer = { hr: setInterval(hrTick, 1000), ecg: setInterval(ecgTick, 100), ox: setInterval(oxTick, 1000) };
+    hrTick(); log('Demo iniciada (datos simulados)');
+  }
+  const g = (x, mu, sig, amp) => amp * Math.exp(-((x - mu) ** 2) / (2 * sig * sig));
+  const syntheticEcg = (p) => g(p, .18, .025, .12) + g(p, .38, .012, -.12) + g(p, .40, .010, 1.0) + g(p, .42, .012, -.25) + g(p, .66, .045, .28);
+
+  // ================= Animación del corazón =================
+  const heart = $('heart');
+  (function animateHeart() {
+    const now = performance.now();
+    if (S.bpm > 0 && (S.server?.connected || S.demo)) {
+      while (now - S.lastBeat >= S.period) S.lastBeat += S.period;
+      const ph = (now - S.lastBeat) / S.period;
+      const lub = Math.exp(-((ph - 0.04) ** 2) / 0.0012), dub = 0.55 * Math.exp(-((ph - 0.22) ** 2) / 0.0016);
+      heart.style.transform = `scale(${(1 + 0.13 * Math.max(lub, dub)).toFixed(4)})`;
+      document.documentElement.style.setProperty('--glow', (0.45 + 0.4 * Math.max(lub, dub)).toFixed(3));
+    } else { heart.style.transform = 'scale(1)'; document.documentElement.style.setProperty('--glow', .35); }
+    requestAnimationFrame(animateHeart);
+  })();
+
+  // ================= Gráficas =================
+  function setupCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1, r = canvas.getBoundingClientRect();
+    if (canvas.width !== Math.round(r.width * dpr) || canvas.height !== Math.round(r.height * dpr)) { canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr); }
+    const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w: r.width, h: r.height };
+  }
+  const niceStep = (range, target) => { const raw = range / target, p = Math.pow(10, Math.floor(Math.log10(raw || 1))); return [1, 2, 5, 10].map(m => m * p).find(s => s >= raw) || 10 * p; };
+  const emptyText = (ctx, w, h, text) => { ctx.fillStyle = cssVar('--ink-3'); ctx.font = '13px ' + cssVar('--sans'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, w / 2, h / 2); };
+
+  function lineChart({ canvas, tip, color, points, xOf, yOf, xLabel, yUnit, yPad = 5, hover, empty = 'Esperando datos…', yMin, yMax, decimals = 0 }) {
+    const { ctx, w, h } = setupCanvas(canvas);
+    const P = { l: 44, r: 12, t: 12, b: 24 };
+    ctx.clearRect(0, 0, w, h);
+    const ink3 = cssVar('--ink-3'), grid = cssVar('--grid');
+    if (points.length < 2) { emptyText(ctx, w, h, empty); tip?.classList.remove('show'); return; }
+    const xs = points.map(xOf), ys = points.map(yOf);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    let y0 = yMin ?? Math.min(...ys) - yPad, y1 = yMax ?? Math.max(...ys) + yPad;
+    const step = niceStep(y1 - y0, 4);
+    if (yMin == null) y0 = Math.floor(y0 / step) * step; if (yMax == null) y1 = Math.ceil(y1 / step) * step;
+    if (y1 <= y0) y1 = y0 + step;
+    const X = x => P.l + (x - x0) / (x1 - x0 || 1) * (w - P.l - P.r), Y = y => P.t + (1 - (y - y0) / (y1 - y0)) * (h - P.t - P.b);
+    ctx.font = '11px ' + cssVar('--sans'); ctx.fillStyle = ink3; ctx.strokeStyle = grid; ctx.lineWidth = 1;
+    for (let y = y0; y <= y1 + 1e-9; y += step) { ctx.beginPath(); ctx.moveTo(P.l, Y(y)); ctx.lineTo(w - P.r, Y(y)); ctx.stroke(); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(Math.round(y), P.l - 8, Y(y)); }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const nx = Math.max(2, Math.floor((w - P.l - P.r) / 110));
+    for (let i = 0; i <= nx; i++) { const x = x0 + (x1 - x0) * i / nx; ctx.fillText(xLabel(x), X(x), h - P.b + 8); }
+    const grad = ctx.createLinearGradient(0, P.t, 0, h - P.b); grad.addColorStop(0, color + '33'); grad.addColorStop(1, color + '00');
+    ctx.beginPath(); points.forEach((p, i) => { const x = X(xOf(p)), y = Y(yOf(p)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+    ctx.lineTo(X(xOf(points[points.length - 1])), h - P.b); ctx.lineTo(X(xOf(points[0])), h - P.b); ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+    const lp = points[points.length - 1];
+    ctx.beginPath(); ctx.arc(X(xOf(lp)), Y(yOf(lp)), 4, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = cssVar('--surface'); ctx.stroke();
+    if (hover != null && tip) {
+      let best = 0, bd = Infinity;
+      points.forEach((p, i) => { const d = Math.abs(X(xOf(p)) - hover); if (d < bd) { bd = d; best = i; } });
+      const p = points[best], px = X(xOf(p)), py = Y(yOf(p));
+      ctx.setLineDash([3, 4]); ctx.strokeStyle = ink3; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, P.t); ctx.lineTo(px, h - P.b); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = cssVar('--surface'); ctx.lineWidth = 2; ctx.stroke();
+      tip.innerHTML = `${xLabel(xOf(p), true)} · <b>${yOf(p).toFixed(decimals)}</b> ${yUnit}`;
+      tip.style.left = px + 'px'; tip.style.top = py + 'px'; tip.classList.add('show');
+    } else tip?.classList.remove('show');
+  }
+
+  const hover = { hr: null, rr: null, spo2: null };
+  function bindHover(canvas, key) {
+    canvas.addEventListener('pointermove', e => { hover[key] = e.clientX - canvas.getBoundingClientRect().left; });
+    canvas.addEventListener('pointerleave', () => { hover[key] = null; });
+  }
+  bindHover($('hrCanvas'), 'hr'); bindHover($('rrCanvas'), 'rr'); bindHover($('spo2Canvas'), 'spo2');
+
+  function drawHr() {
+    const now = Date.now(), pts = S.hrWindow ? S.hr.filter(p => now - p.t <= S.hrWindow * 1000) : S.hr;
+    lineChart({ canvas: $('hrCanvas'), tip: $('hrTip'), color: cssVar('--hr-line'), points: pts, xOf: p => p.t, yOf: p => p.bpm, yUnit: 'lpm', hover: hover.hr,
+      xLabel: (t, full) => full ? clock(t) : (S.sessionStart ? '+' + fmtTime(t - S.sessionStart) : clock(t)) });
+  }
+  function drawRr() {
+    const pts = validRr().slice(-120).map((r, i) => ({ i, ms: r.ms, t: r.t }));
+    lineChart({ canvas: $('rrCanvas'), tip: $('rrTip'), color: cssVar('--rr-line'), points: pts, xOf: p => p.i, yOf: p => p.ms, yUnit: 'ms', yPad: 30, hover: hover.rr,
+      xLabel: (i, full) => full ? clock(pts[Math.max(0, Math.min(pts.length - 1, Math.round(i)))].t) : `${Math.round(i) - (pts.length - 1)}`,
+      empty: 'Esperando intervalos RR…' });
+  }
+  function drawSpo2() {
+    const pts = S.ox.spo2.slice(-600);
+    lineChart({ canvas: $('spo2Canvas'), tip: $('spo2Tip'), color: cssVar('--spo2-line'), points: pts, xOf: p => p.t, yOf: p => p.v, yUnit: '%', hover: hover.spo2,
+      yMin: Math.min(88, ...pts.map(p => p.v)) - 1, yMax: 100, xLabel: (t) => clock(t), empty: 'Sin oxímetro conectado' });
+  }
+  function drawPoincare() {
+    const canvas = $('poincareCanvas'), { ctx, w, h } = setupCanvas(canvas); ctx.clearRect(0, 0, w, h);
+    const rrs = validRr().slice(-300).map(r => r.ms);
+    if (rrs.length < 3) { emptyText(ctx, w, h, 'Esperando intervalos RR…'); return; }
+    const P = { l: 44, r: 12, t: 10, b: 24 };
+    const lo = Math.min(...rrs), hi = Math.max(...rrs), pad = Math.max(20, (hi - lo) * 0.15);
+    const step = niceStep(hi - lo + 2 * pad, 4), a0 = Math.floor((lo - pad) / step) * step, a1 = Math.ceil((hi + pad) / step) * step;
+    const X = v => P.l + (v - a0) / (a1 - a0) * (w - P.l - P.r), Y = v => P.t + (1 - (v - a0) / (a1 - a0)) * (h - P.t - P.b);
+    ctx.font = '11px ' + cssVar('--sans'); ctx.fillStyle = cssVar('--ink-3'); ctx.strokeStyle = cssVar('--grid'); ctx.lineWidth = 1;
+    for (let v = a0; v <= a1 + 1e-9; v += step) {
+      ctx.beginPath(); ctx.moveTo(P.l, Y(v)); ctx.lineTo(w - P.r, Y(v)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(X(v), P.t); ctx.lineTo(X(v), h - P.b); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(v, P.l - 8, Y(v));
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(v, X(v), h - P.b + 8);
+    }
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = cssVar('--ink-3'); ctx.beginPath(); ctx.moveTo(X(a0), Y(a0)); ctx.lineTo(X(a1), Y(a1)); ctx.stroke(); ctx.setLineDash([]);
+    const color = cssVar('--rr-line');
+    for (let i = 1; i < rrs.length; i++) {
+      const age = (rrs.length - i) / rrs.length;
+      ctx.globalAlpha = 0.25 + 0.75 * (1 - age);
+      ctx.beginPath(); ctx.arc(X(rrs[i - 1]), Y(rrs[i]), i === rrs.length - 1 ? 5 : 3.2, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+      if (i === rrs.length - 1) { ctx.strokeStyle = cssVar('--surface'); ctx.lineWidth = 2; ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = cssVar('--ink-3'); ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText('RRₙ₊₁ (ms) ↑', P.l + 6, P.t); ctx.textAlign = 'right'; ctx.fillText('RRₙ (ms) →', w - P.r - 4, h - P.b - 16);
+  }
+
+  function drawEcg() {
+    const canvas = $('ecgCanvas'), { ctx, w, h } = setupCanvas(canvas); ctx.clearRect(0, 0, w, h);
+    const secs = 6, N = ECG_RATE * secs, grid = cssVar('--grid'), ink3 = cssVar('--ink-3'), mm = w / (secs * 25);
+    ctx.lineWidth = 1; ctx.strokeStyle = grid;
+    for (let x = 0; x <= w; x += mm * 5) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+    for (let y = h / 2; y <= h; y += mm * 5) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    for (let y = h / 2; y >= 0; y -= mm * 5) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    if (S.ecgCount < 10) {
+      emptyText(ctx, w, h, S.ecgOn ? (S.ecgFrames ? 'Recibiendo paquetes pero sin muestras ECG · revisa el registro' : 'Esperando paquetes ECG del sensor…') : 'ECG inactivo · se activa al conectar el Polar H10');
+      return;
+    }
+    const count = Math.min(N, S.ecgCount, S.ecg.length), start = (S.ecgHead - count + S.ecg.length) % S.ecg.length;
+    const vals = new Float32Array(count); for (let i = 0; i < count; i++) vals[i] = S.ecg[(start + i) % S.ecg.length];
+    const sorted = Float32Array.from(vals).sort();
+    const med = sorted[Math.floor(count / 2)], lo = sorted[Math.floor(count * 0.01)], hi = sorted[Math.floor(count * 0.99)];
+    const amp = Math.max(hi - med, med - lo, 300) * 1.15;
+    const Y = v => h / 2 - (v - med) / amp * (h / 2 - 10), px = w / N, offset = (N - count) * px;
+    ctx.beginPath(); for (let i = 0; i < count; i++) { const x = offset + i * px, y = Y(vals[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.strokeStyle = cssVar('--ecg'); ctx.lineWidth = 1.8; ctx.lineJoin = 'round'; ctx.shadowColor = cssVar('--ecg'); ctx.shadowBlur = 6; ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.arc(offset + (count - 1) * px, Y(vals[count - 1]), 3, 0, Math.PI * 2); ctx.fillStyle = cssVar('--ecg'); ctx.fill();
+    ctx.fillStyle = ink3; ctx.font = '11px ' + cssVar('--sans'); ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(`±${Math.round(amp / 100) / 10} mV · ${secs} s`, 8, 6);
+  }
+
+  let frame = 0;
+  function drawAll() { drawHr(); drawEcg(); if (frame++ % 3 === 0) { drawRr(); drawPoincare(); drawSpo2(); } }
+  (function loop() { drawAll(); requestAnimationFrame(loop); })();
+  new ResizeObserver(() => { frame = 0; drawAll(); }).observe(document.body);
+
+  // ================= Exportación =================
+  const download = (name, text) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
+  const stamp = () => new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+  function exportCsv() {
+    const rows = ['timestamp_iso,bpm,rr_ms,spo2'];
+    for (const h of S.hr) {
+      const rr = S.rr.filter(r => r.t === h.t).map(r => r.ms).join(';');
+      let sp = ''; for (let i = S.ox.spo2.length - 1; i >= 0; i--) if (S.ox.spo2[i].t <= h.t + 500) { sp = S.ox.spo2[i].v; break; }
+      rows.push(`${new Date(h.t).toISOString()},${h.bpm},${rr},${sp}`);
+    }
+    download(`pulso_hr_${stamp()}.csv`, rows.join('\n')); log(`Exportados ${S.hr.length} registros HR`);
+  }
+  function exportEcgCsv() {
+    if (!S.ecgAll.length) { log('No hay muestras de ECG para exportar'); return; }
+    const rows = ['sample_index,time_s,ecg_uV']; S.ecgAll.forEach((v, i) => rows.push(`${i},${(i / ECG_RATE).toFixed(4)},${v}`));
+    download(`pulso_ecg_${stamp()}.csv`, rows.join('\n')); log(`Exportadas ${S.ecgAll.length} muestras ECG`);
+  }
+
+  // ================= Eventos UI =================
+  $('connectBtn').addEventListener('click', () => (S.device && S.server?.connected) ? disconnect() : connect());
+  $('oxBtn').addEventListener('click', connectOx);
+  $('demoBtn').addEventListener('click', toggleDemo);
+  const downloadSelf = () => {
+    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' })); a.download = 'index.html'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000); log('Copia de la app descargada como index.html');
+  };
+  $('dlBtn').addEventListener('click', downloadSelf); $('dlBtn2').addEventListener('click', downloadSelf);
+  $('diagBtn').addEventListener('click', async () => {
+    const info = [
+      `Pulso · diagnóstico ${new Date().toISOString()}`,
+      `Navegador: ${navigator.userAgent}`,
+      `Origen: ${location.href}`,
+      `Web Bluetooth: ${!!navigator.bluetooth}`,
+      `Sensor: ${S.device?.name || '(no conectado)'} · conectado=${!!S.server?.connected}`,
+      `PMD control/datos: ${!!S.pmdControl}/${!!S.pmdData} · características: ${S.pmdFeatures || '(no leídas)'}`,
+      `Respuestas PMD: ${S.pmdResponses.join(' | ') || '(ninguna)'}`,
+      `ECG: activo=${S.ecgOn} intento=${S.ecgAttempt} paquetes=${S.ecgFrames} bytes=${S.ecgBytes} muestras=${S.ecgCount} primerPaquete=${S.ecgFirstHeader || '-'}`,
+      `HR: ${S.hr.length} registros · RR: ${S.rr.length}`,
+      '--- registro ---', $('log').textContent.trim(),
+    ].join('\n');
+    try { await navigator.clipboard.writeText(info); log('Diagnóstico copiado al portapapeles: pégalo en el chat'); }
+    catch { const ta = document.createElement('textarea'); ta.value = info; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); log('Diagnóstico copiado (modo compatible)'); }
+  });
+  $('resetBtn').addEventListener('click', resetSession);
+  $('csvBtn').addEventListener('click', exportCsv);
+  $('ecgCsvBtn').addEventListener('click', exportEcgCsv);
+  $('ecgBtn').addEventListener('click', () => {
+    if (S.demo) { S.ecgOn = !S.ecgOn; $('ecgBadge').textContent = S.ecgOn ? 'ECG SIMULADO' : 'ECG INACTIVO'; $('ecgBadge').className = 'badge' + (S.ecgOn ? '' : ' off'); $('ecgBtn').textContent = S.ecgOn ? 'Detener ECG' : 'Activar ECG'; return; }
+    S.ecgOn ? stopEcg() : startEcg();
+  });
+  $('hrWindow').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.hrWindow = +b.dataset.w; [...$('hrWindow').children].forEach(x => x.classList.toggle('active', x === b)); });
+  $('maxHr').addEventListener('input', e => { const v = +e.target.value; if (v >= 100 && v <= 240) { S.maxHr = v; e.target.dataset.manual = '1'; save(); updateZone(S.bpm); updateZones(); } });
+  $('age').addEventListener('input', e => { const a = +e.target.value; if (a >= 5 && a <= 110) { S.age = a; if (!$('maxHr').dataset.manual) { S.maxHr = 220 - a; $('maxHr').value = S.maxHr; } save(); updateZone(S.bpm); updateZones(); updateEnergy(); } });
+  $('weight').addEventListener('input', e => { const v = +e.target.value; S.weight = v >= 20 && v <= 250 ? v : null; save(); updateEnergy(); });
+  $('sex').addEventListener('change', e => { S.sex = e.target.value; save(); });
+  $('themeBtn').addEventListener('click', () => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; save(); });
+  function save() { try { localStorage.setItem('pulso', JSON.stringify({ maxHr: S.maxHr, manualMax: !!$('maxHr').dataset.manual, age: S.age, weight: S.weight, sex: S.sex, theme: document.documentElement.dataset.theme || 'dark' })); } catch {} }
+  (function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem('pulso') || '{}');
+      if (s.maxHr) { S.maxHr = s.maxHr; $('maxHr').value = s.maxHr; if (s.manualMax) $('maxHr').dataset.manual = '1'; }
+      if (s.age) { S.age = s.age; $('age').value = s.age; }
+      if (s.weight) { S.weight = s.weight; $('weight').value = s.weight; }
+      if (s.sex) { S.sex = s.sex; $('sex').value = s.sex; }
+      if (s.theme) document.documentElement.dataset.theme = s.theme;
+    } catch {}
+  })();
+  updateZones(); updateEnergy();
+  if (!navigator.bluetooth) { $('btWarn').classList.remove('hidden'); log('navigator.bluetooth no disponible'); }
+  else log('Listo. Ponte la banda, humedece los electrodos y pulsa «Conectar».');
+  window.addEventListener('beforeunload', () => { if (S.device?.gatt.connected) stopEcg(); });
+})();
+</script>
+</body>
+</html>
