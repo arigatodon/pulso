@@ -118,3 +118,11 @@ La app reintenta 5 veces. Si el sensor está lejos o la batería baja (menos del
 - Todo se procesa en el navegador; no se envía ningún dato a Internet.
 
 No es un dispositivo médico: los valores son orientativos y no sustituyen una valoración clínica.
+
+## Pruébalo en línea
+
+https://arigatodon.github.io/pulso/ (Chrome o Edge, con Bluetooth activado).
+
+## Licencia
+
+MIT. Ver `LICENSE`.
